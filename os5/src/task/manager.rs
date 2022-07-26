@@ -9,6 +9,7 @@ use crate::sync::UPSafeCell;
 use alloc::vec::Vec;
 use alloc::sync::Arc;
 use lazy_static::*;
+use crate::config::BIG_STRIDE;
 
 pub struct TaskManager {
     ready_queue: Vec<Arc<TaskControlBlock>>,
@@ -32,8 +33,15 @@ impl TaskManager {
             x.1.inner_exclusive_access().pass.cmp(&y.1.inner_exclusive_access().pass)
         }).unwrap().0;
 
-        // return task with minimal pass
-        Some(self.ready_queue.remove(index))
+        let task = self.ready_queue.remove(index);
+        let mut task_inner = task.inner_exclusive_access();
+        let pass = task_inner.pass;
+        task_inner.pass += BIG_STRIDE / task_inner.prio as usize;
+        if pass > task_inner.pass {
+            panic!("pass overflow {} => {}", pass, task_inner.pass);
+        }
+        drop(task_inner);
+        Some(task)
     }
 }
 
